@@ -44,7 +44,7 @@ APP = sfcapp
 # all source are stored in SRCS-y
 SRCS-y := nsh.c common.c sfc_proxy.c sfc_classifier.c sfc_forwarder.c parser.c main.c  
 
-CFLAGS += -O3
+CFLAGS += -O3 -g
 CFLAGS += $(WERROR_FLAGS)
 
 include $(RTE_SDK)/mk/rte.extapp.mk

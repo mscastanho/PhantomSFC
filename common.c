@@ -144,8 +144,8 @@ int common_check_destination(struct rte_mbuf *mbuf, struct ether_addr *mac){
     char mac1[64],mac2[64];
     int res;
     eth_hdr = rte_pktmbuf_mtod(mbuf,struct ether_hdr *);
-    ether_format_addr(mac1,64,&eth_hdr->d_addr);
-    ether_format_addr(mac2,64,mac);
+    // ether_format_addr(mac1,64,&eth_hdr->d_addr);
+    // ether_format_addr(mac2,64,mac);
     res = memcmp(&eth_hdr->d_addr,mac,sizeof(struct ether_addr));
     /*if(res == 0)
         printf("Comparing %s == %s => result: %d\n",mac1,mac2,res);
