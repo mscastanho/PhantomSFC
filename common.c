@@ -141,7 +141,7 @@ void common_64_to_mac(uint64_t val, struct ether_addr *mac){
 
 int common_check_destination(struct rte_mbuf *mbuf, struct ether_addr *mac){
     struct ether_hdr *eth_hdr;
-    char mac1[64],mac2[64];
+    // char mac1[64],mac2[64];
     int res;
     eth_hdr = rte_pktmbuf_mtod(mbuf,struct ether_hdr *);
     // ether_format_addr(mac1,64,&eth_hdr->d_addr);

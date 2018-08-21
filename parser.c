@@ -37,6 +37,8 @@ enum sfcapp_type parse_apptype(const char *type){
     if(strcmp(type,"forwarder") == 0)
         return SFC_FORWARDER;
     
+    if(strcmp(type,"loopback") == 0)
+        return SFC_LOOPBACK;
     return NONE;
 }
 
@@ -384,7 +386,7 @@ void parse_config_file(char* cfg_filename){
     
     if(cfgfile == NULL)
         rte_exit(EXIT_FAILURE,
-            "Failed to load proxy config file\n");
+            "Failed to load config file\n");
     
     nb_sections = rte_cfgfile_num_sections(cfgfile,NULL,0);
 
@@ -396,14 +398,14 @@ void parse_config_file(char* cfg_filename){
 
     if(sections == NULL)
         rte_exit(EXIT_FAILURE,
-            "Failed to allocate memory when parsing proxy config file.\n");
+            "Failed to allocate memory when parsing config file.\n");
     
     for(i = 0 ; i < nb_sections ; i++){
         sections[i] = (char*) malloc(CFG_NAME_LEN*sizeof(char));    
      
         if(sections[i] == NULL)
             rte_exit(EXIT_FAILURE,
-                "Failed to allocate memory when parsing proxy config file.\n");
+                "Failed to allocate memory when parsing config file.\n");
     }
 
     rte_cfgfile_sections(cfgfile,sections,CFG_FILE_MAX_SECTIONS);
