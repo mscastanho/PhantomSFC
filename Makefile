@@ -42,7 +42,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = sfcapp
 
 # all source are stored in SRCS-y
-SRCS-y := nsh.c common.c sfc_proxy.c sfc_classifier.c sfc_forwarder.c parser.c main.c  
+SRCS-y := nsh.c common.c sfc_proxy.c sfc_classifier.c sfc_forwarder.c sfc_loopback.c parser.c main.c  
 
 CFLAGS += -O3 -g
 CFLAGS += $(WERROR_FLAGS)

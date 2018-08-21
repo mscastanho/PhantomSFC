@@ -48,6 +48,7 @@ enum sfcapp_type {
     SFC_PROXY,
     SFC_CLASSIFIER,
     SFC_FORWARDER,
+    SFC_LOOPBACK,
     NONE
 };
 

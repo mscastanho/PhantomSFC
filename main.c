@@ -15,6 +15,7 @@
 #include "sfc_classifier.h"
 #include "sfc_proxy.h"
 #include "sfc_forwarder.h"
+#include "sfc_loopback.h"
 #include "nsh.h"
 
 /* Remove later */
@@ -129,6 +130,9 @@ static void setup_app(void){
             break;
         case SFC_PROXY:
             proxy_setup();
+            break;
+        case SFC_LOOPBACK:
+            loopback_setup();
             break;
         case NONE:
             rte_exit(EXIT_FAILURE,"App type not detected, something is wrong!\n");
@@ -299,8 +303,9 @@ int main(int argc, char **argv){
     /* Initialize corresponding tables */
     setup_app();
 
-    /* Read config file and setup app*/    
-    parse_config_file(cfg_filename);
+    /* Read config file and setup app*/
+    if(sfcapp_cfg.type != SFC_LOOPBACK)
+        parse_config_file(cfg_filename);
 
     /* Print SFF's MAC read from config files */
     char mac[64];
