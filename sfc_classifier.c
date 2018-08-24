@@ -122,8 +122,8 @@ __attribute__((noreturn)) void classifier_main_loop(void){
 
         /* Classify and encapsulate */
         if(likely(nb_rx > 0)){  
-            classifier_handle_pkts(rx_pkts,nb_rx,&drop_mask);        
-            sfcapp_cfg.tx_pkts += send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask); 
+            classifier_handle_pkts(rx_pkts,nb_rx,&drop_mask);    
+            send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask); 
         }
 
     }

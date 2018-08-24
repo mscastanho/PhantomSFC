@@ -25,25 +25,23 @@ extern long int n_rx, n_tx;
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 
 void common_flush_tx_buffers(void){
-    rte_eth_tx_buffer_flush(sfcapp_cfg.port1,0,sfcapp_cfg.tx_buffer1);
-    rte_eth_tx_buffer_flush(sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2);
+    sfcapp_cfg.tx_pkts += rte_eth_tx_buffer_flush(sfcapp_cfg.port1,0,sfcapp_cfg.tx_buffer1);
+    sfcapp_cfg.tx_pkts += rte_eth_tx_buffer_flush(sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2);
 }
 
-uint16_t send_pkts(struct rte_mbuf **mbufs, uint8_t tx_port, uint16_t tx_q, 
+void send_pkts(struct rte_mbuf **mbufs, uint8_t tx_port, uint16_t tx_q, 
     struct rte_eth_dev_tx_buffer* tx_buffer, uint16_t nb_pkts, uint64_t drop_mask){
     uint16_t i;
     uint16_t sent=0;
-    uint16_t total_sent=0;
 
     for(i = 0 ; i < nb_pkts ; i++){
         if( (drop_mask & (1<<i)) == 0 ){
             sent = rte_eth_tx_buffer(tx_port,tx_q,tx_buffer,mbufs[i]);
-            total_sent += sent;
+            if(sent)
+                sfcapp_cfg.tx_pkts += sent;
         }else
             sfcapp_cfg.dropped_pkts++;
     }
-    
-    return total_sent;
 }
 
 static void sprint_ipv4(uint32_t ip, char* buffer){

@@ -268,7 +268,7 @@ void proxy_main_loop(void){
 	    /* Process and decap received packets*/
         proxy_handle_inbound_pkts(rx_pkts,nb_rx,&drop_mask);
 
-        sfcapp_cfg.tx_pkts += send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
+        send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
 
         drop_mask = 0;
 
@@ -279,7 +279,7 @@ void proxy_main_loop(void){
         /* Process and encap packets from SFs */
         proxy_handle_outbound_pkts(rx_pkts,nb_rx,&drop_mask);
 
-        sfcapp_cfg.tx_pkts += send_pkts(rx_pkts,sfcapp_cfg.port1,0,sfcapp_cfg.tx_buffer1,nb_rx,drop_mask); 
+        send_pkts(rx_pkts,sfcapp_cfg.port1,0,sfcapp_cfg.tx_buffer1,nb_rx,drop_mask); 
     }
 }
 

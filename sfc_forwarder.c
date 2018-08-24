@@ -166,7 +166,7 @@ __attribute__((noreturn)) void forwarder_main_loop(void){
         if(likely(nb_rx > 0)){
             forwarder_handle_pkts(rx_pkts,nb_rx,&drop_mask);
             /* Forwarder uses the same port for rx and tx */
-            sfcapp_cfg.tx_pkts += send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
+            send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
         }
     }
 }

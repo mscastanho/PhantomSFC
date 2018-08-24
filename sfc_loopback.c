@@ -35,7 +35,7 @@ __attribute__((noreturn)) void loopback_main_loop(void){
 
         if(likely(nb_rx > 0)){
             /* Function will only forward packets to second interface without change */
-            sfcapp_cfg.tx_pkts += send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
+            send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
         }
     }
 }

@@ -71,7 +71,7 @@ struct sfcapp_config {
 
 void common_flush_tx_buffers(void);
 
-uint16_t send_pkts(struct rte_mbuf **mbufs, uint8_t tx_port, uint16_t tx_q, struct rte_eth_dev_tx_buffer* tx_buffer,
+void send_pkts(struct rte_mbuf **mbufs, uint8_t tx_port, uint16_t tx_q, struct rte_eth_dev_tx_buffer* tx_buffer,
  uint16_t nb_pkts, uint64_t drop_mask);
 
 void common_print_ipv4_5tuple(struct ipv4_5tuple *tuple);
