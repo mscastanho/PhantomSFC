@@ -67,13 +67,13 @@ static void sfcapp_assoc_ports(int portmask){
     }
 }
 
-static const char sfcapp_options[] = {
-    'p', /* Port mask */
-    't', /* SFC entity type*/
-    'f', /* Configuration file */
-    'h', /* Print usage */
-    'H' /* Hash table size*/
-};
+// static const char sfcapp_options[] = {
+//     'p', /* Port mask */
+//     't', /* SFC entity type*/
+//     'f', /* Configuration file */
+//     'h', /* Print usage */
+//     'H' /* Hash table size*/
+// };
 
 static void 
 parse_args(int argc, char **argv){
@@ -140,16 +140,32 @@ static void setup_app(void){
     };
 }
 
+static void print_stats(void)
+{
+    printf("\n\n%ld packets received\n%ld packets transmitted\n"
+        "%ld packets dropped\n",
+        sfcapp_cfg.rx_pkts,sfcapp_cfg.tx_pkts,sfcapp_cfg.dropped_pkts);
+}
+
 static void
 signal_handler(int signum)
 {
-	if (signum == SIGINT || signum == SIGTERM) {
-		printf("\n\n%ld packets received\n%ld packets transmitted\n"
-                "%ld packets dropped\n",
-				sfcapp_cfg.rx_pkts,sfcapp_cfg.rx_pkts,sfcapp_cfg.dropped_pkts);
+    switch(signum){
+        case SIGTSTP: // Zero statistics
+            sfcapp_cfg.tx_pkts = 0;
+            sfcapp_cfg.rx_pkts = 0;
+            sfcapp_cfg.dropped_pkts = 0;
+            break;
+        case SIGINT: // Print statistics
+            print_stats();
+            break;
+        case SIGQUIT: // Print statistics and quit
+            print_stats();
+            exit(0);
+            break;
+        default:
+            print_stats();
     }
-    
-    exit(0);
 }
 
 /* Function to allocate memory to be used by the application */ 
