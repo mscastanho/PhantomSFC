@@ -152,11 +152,11 @@ static void proxy_handle_inbound_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts,
 
     for(i = 0; i < nb_pkts ; i++){
 
-        lkp = common_check_destination(mbufs[i],&sfcapp_cfg.port1_mac);
-        if(lkp != 0){
-            *drop_mask &= 1<<i; 
-            continue;
-        }
+        // lkp = common_check_destination(mbufs[i],&sfcapp_cfg.port1_mac);
+        // if(lkp != 0){
+        //     *drop_mask &= 1<<i;
+        //     continue;
+        // }
 
         nsh_get_header(mbufs[i],&nsh_header);
 

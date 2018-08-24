@@ -60,6 +60,9 @@ int classifier_setup(void){
     SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to initialize Classifier table\n");
 
     sfcapp_cfg.main_loop = classifier_main_loop;
+    
+    // Enable promiscuous mode for RX interface
+    rte_eth_promiscuous_enable(sfcapp_cfg.port1);
 
     return 0;
 }

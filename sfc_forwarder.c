@@ -108,12 +108,12 @@ uint64_t *drop_mask){
 
     for(i = 0 ; i < nb_pkts ; i++){
 
-        /* Check if this packet is for me! If not, drop*/
-        lkp = common_check_destination(mbufs[i],&sfcapp_cfg.port1_mac);
-        if(lkp != 0){
-            *drop_mask |= 1<<i; 
-            continue;
-        }
+        // /* Check if this packet is for me! If not, drop*/
+        // lkp = common_check_destination(mbufs[i],&sfcapp_cfg.port1_mac);
+        // if(lkp != 0){
+        //     *drop_mask |= 1<<i; 
+        //     continue;
+        // }
 
         nsh_get_header(mbufs[i],&nsh_header);
 

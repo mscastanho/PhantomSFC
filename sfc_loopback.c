@@ -14,6 +14,7 @@ extern struct sfcapp_config sfcapp_cfg;
 int loopback_setup(void){
 
     sfcapp_cfg.main_loop = loopback_main_loop;
+    rte_eth_promiscuous_enable(sfcapp_cfg.port1);
     
     return 0;
 }
