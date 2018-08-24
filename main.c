@@ -151,7 +151,7 @@ static void
 signal_handler(int signum)
 {
     switch(signum){
-        case SIGTSTP: // Zero statistics
+        case SIGUSR1: // Zero statistics
             sfcapp_cfg.tx_pkts = 0;
             sfcapp_cfg.rx_pkts = 0;
             sfcapp_cfg.dropped_pkts = 0;
@@ -290,7 +290,8 @@ int main(int argc, char **argv){
 
     /* Set signal handlers */
     signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+    signal(SIGUSR1, signal_handler);
+    signal(SIGQUIT, signal_handler);
 
     /* Setup interfaces */
     ret = init_port(sfcapp_cfg.port1,sfcapp_pktmbuf_pool);
