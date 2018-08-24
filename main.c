@@ -42,6 +42,10 @@ static const struct rte_eth_conf port_cfg = {
     },
 };
 
+// This array will record the TX Buffer size every time
+// a TX operation is run
+uint64_t tx_buf_len_counter[2][TX_BUFFER_SIZE];
+
 static void sfcapp_assoc_ports(int portmask){
     uint8_t i;
     int count = 2; /* We'll only setup 2 ports */
@@ -142,9 +146,16 @@ static void setup_app(void){
 
 static void print_stats(void)
 {
+    int i;
+
     printf("\n\n%ld packets received\n%ld packets transmitted\n"
         "%ld packets dropped\n",
         sfcapp_cfg.rx_pkts,sfcapp_cfg.tx_pkts,sfcapp_cfg.dropped_pkts);
+
+    for(i = 0 ; i < TX_BUFFER_SIZE-1 ; i++)
+        printf("%" PRIu64 ";",tx_buf_len_counter[1][i]);
+
+    printf("%" PRIu64 "",tx_buf_len_counter[1][TX_BUFFER_SIZE-1]);
 }
 
 static void
@@ -198,6 +209,15 @@ alloc_mem(unsigned n_mbuf){
     }
 }
 
+static uint16_t
+save_buffer_length(uint16_t port __rte_unused, uint16_t qidx __rte_unused,
+        struct rte_mbuf **pkts, uint16_t nb_pkts, void *_ __rte_unused)
+{
+    tx_buf_len_counter[1][sfcapp_cfg.tx_buffer2->length]++;
+
+    return nb_pkts;
+}
+
 static int
 init_port(uint8_t port, struct rte_mempool *mbuf_pool){
     struct rte_eth_conf port_conf = port_cfg;
@@ -243,21 +263,23 @@ init_port(uint8_t port, struct rte_mempool *mbuf_pool){
             eth_addr.addr_bytes[2],eth_addr.addr_bytes[3],
             eth_addr.addr_bytes[4],eth_addr.addr_bytes[5]);
 
-    /* Remove this later! */
+    // /* Remove this later! */
 
-    switch(rte_eth_promiscuous_get(port)){
-        case 1:
-            printf("Promiscuous mode initially ENABLED for port %" PRIu16 "\n",port);
-            break;
-        case 0:
-            printf("Promiscuous mode initially DISABLED for port %" PRIu16 "\n",port);
-            break;
-        default:
-            printf("Error while trying to define prosmic status por fort %" PRIu16 " \n",port);
-            break;
-    }
+    // switch(rte_eth_promiscuous_get(port)){
+    //     case 1:
+    //         printf("Promiscuous mode initially ENABLED for port %" PRIu16 "\n",port);
+    //         break;
+    //     case 0:
+    //         printf("Promiscuous mode initially DISABLED for port %" PRIu16 "\n",port);
+    //         break;
+    //     default:
+    //         printf("Error while trying to define prosmic status por fort %" PRIu16 " \n",port);
+    //         break;
+    // }
 
     rte_eth_promiscuous_disable(port);
+
+    rte_eth_add_tx_callback(port, 0, save_buffer_length, NULL);
 
     return 0;
 
@@ -305,14 +327,14 @@ int main(int argc, char **argv){
     rte_eth_macaddr_get(sfcapp_cfg.port2,&sfcapp_cfg.port2_mac);
 
     /* Init TX buffers */
-    sfcapp_cfg.tx_buffer1 = rte_zmalloc(NULL, RTE_ETH_TX_BUFFER_SIZE(TX_BUFFER_SIZE), 0);
-    ret = rte_eth_tx_buffer_init(sfcapp_cfg.tx_buffer1,BURST_SIZE);
+    sfcapp_cfg.tx_buffer1 = rte_zmalloc(NULL, RTE_ETH_TX_BUFFER_SIZE(BURST_SIZE), 0);
+    ret = rte_eth_tx_buffer_init(sfcapp_cfg.tx_buffer1,TX_BUFFER_SIZE);
     SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to create TX buffer1.\n");
     rte_eth_tx_buffer_set_err_callback(sfcapp_cfg.tx_buffer1,
         rte_eth_tx_buffer_count_callback,&sfcapp_cfg.dropped_pkts);
 
-    sfcapp_cfg.tx_buffer2 = rte_zmalloc(NULL, RTE_ETH_TX_BUFFER_SIZE(TX_BUFFER_SIZE), 0);
-    ret = rte_eth_tx_buffer_init(sfcapp_cfg.tx_buffer2,BURST_SIZE);
+    sfcapp_cfg.tx_buffer2 = rte_zmalloc(NULL, RTE_ETH_TX_BUFFER_SIZE(BURST_SIZE), 0);
+    ret = rte_eth_tx_buffer_init(sfcapp_cfg.tx_buffer2,TX_BUFFER_SIZE);
     SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to create TX buffer2.\n");
     rte_eth_tx_buffer_set_err_callback(sfcapp_cfg.tx_buffer2,
         rte_eth_tx_buffer_count_callback,&sfcapp_cfg.dropped_pkts);
