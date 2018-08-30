@@ -5,10 +5,14 @@
 #include <rte_ether.h>
 #include <rte_hash.h>
 #include <rte_jhash.h>
+#include <rte_cycles.h>
+#include <rte_common.h>
 
 #include "sfc_forwarder.h"
 #include "common.h"
 #include "nsh.h"
+
+#define BURST_TX_DRAIN_US 100
 
 extern struct sfcapp_config sfcapp_cfg;
 
@@ -154,11 +158,20 @@ __attribute__((noreturn)) void forwarder_main_loop(void){
     uint16_t nb_rx;
     struct rte_mbuf *rx_pkts[BURST_SIZE];
     uint64_t drop_mask;
+    uint64_t prev_tsc, cur_tsc;
+    const uint64_t drain_tsc = (rte_get_tsc_hz() + US_PER_S - 1) / US_PER_S * BURST_TX_DRAIN_US;
     
+    prev_tsc = 0;
+
     for(;;){
         drop_mask = 0;
 
-        common_flush_tx_buffers();
+        cur_tsc = rte_rdtsc();
+
+        if(unlikely(cur_tsc - prev_tsc > drain_tsc)){
+            common_flush_tx_buffers();
+            prev_tsc = cur_tsc;
+        }
 
         nb_rx = rte_eth_rx_burst(sfcapp_cfg.port1,0,rx_pkts,
                     BURST_SIZE);
@@ -168,5 +181,6 @@ __attribute__((noreturn)) void forwarder_main_loop(void){
             /* Forwarder uses the same port for rx and tx */
             send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
         }
+
     }
 }
