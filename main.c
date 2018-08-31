@@ -18,8 +18,6 @@
 #include "sfc_loopback.h"
 #include "nsh.h"
 
-/* Remove later */
-
 static uint8_t nb_ports;
 struct sfcapp_config sfcapp_cfg;
 
@@ -41,10 +39,6 @@ static const struct rte_eth_conf port_cfg = {
         .mq_mode = ETH_MQ_TX_NONE,
     },
 };
-
-// This array will count the number of times a certain number
-// of packets has been dropped for a given TX_BUFFER_LENGTH
-uint64_t tx_buf_len_counter[TX_BUFFER_SIZE][TX_BUFFER_SIZE];
 
 static void sfcapp_assoc_ports(int portmask){
     uint8_t i;
@@ -145,21 +139,10 @@ static void setup_app(void){
 }
 
 static void print_stats(void)
-{
-    int i,j;
-    
+{    
     printf("\n\n%ld packets received\n%ld packets transmitted\n"
         "%ld packets dropped\n",
         sfcapp_cfg.rx_pkts,sfcapp_cfg.tx_pkts,sfcapp_cfg.dropped_pkts);
-
-    for(i = 0 ; i < 64 ; i++){
-        printf("%d: ",i);
-
-        for(j = 0 ; j < 64 ; j++){
-            printf("%" PRIu64 "  ",tx_buf_len_counter[i][j]);
-        }
-        printf("\n");
-    }
 }
 
 static void
@@ -213,11 +196,21 @@ alloc_mem(unsigned n_mbuf){
     }
 }
 
-static void
-save_buffer_length_callback(struct rte_mbuf **unsent, uint16_t count, void *userdata){
-    tx_buf_len_counter[sfcapp_cfg.tx_buffer2->length][count]++;
-    sfcapp_cfg.dropped_pkts += count;
-}
+// static void
+// drop_rtx_cnt_callback(struct rte_mbuf **pkts, uint16_t unsent, void *userdata){
+//     // unsigned int _sent = 0;
+//     // int cnt = unsent<<3; // 8 tries for each packet
+//     // do {
+//     //     /* Note: hard-coded TX queue */
+//     //     _sent += rte_eth_tx_burst(sfcapp_cfg.port2, 0, &pkts[_sent],
+//     //                                     unsent - _sent);
+//     // } while (_sent != unsent && cnt-- > 0);
+
+//     sfcapp_cfg.dropped_pkts += unsent;
+//     // drop_rtx_cnt[0] += unsent;
+//     // drop_rtx_cnt[1] += _sent;
+
+// }
 
 static int
 init_port(uint8_t port, struct rte_mempool *mbuf_pool){
@@ -264,23 +257,7 @@ init_port(uint8_t port, struct rte_mempool *mbuf_pool){
             eth_addr.addr_bytes[2],eth_addr.addr_bytes[3],
             eth_addr.addr_bytes[4],eth_addr.addr_bytes[5]);
 
-    // /* Remove this later! */
-
-    // switch(rte_eth_promiscuous_get(port)){
-    //     case 1:
-    //         printf("Promiscuous mode initially ENABLED for port %" PRIu16 "\n",port);
-    //         break;
-    //     case 0:
-    //         printf("Promiscuous mode initially DISABLED for port %" PRIu16 "\n",port);
-    //         break;
-    //     default:
-    //         printf("Error while trying to define prosmic status por fort %" PRIu16 " \n",port);
-    //         break;
-    // }
-
     rte_eth_promiscuous_disable(port);
-
-    rte_eth_add_tx_callback(port, 0, save_buffer_length, NULL);
 
     return 0;
 
@@ -337,10 +314,10 @@ int main(int argc, char **argv){
     sfcapp_cfg.tx_buffer2 = rte_zmalloc(NULL, RTE_ETH_TX_BUFFER_SIZE(BURST_SIZE), 0);
     ret = rte_eth_tx_buffer_init(sfcapp_cfg.tx_buffer2,BURST_SIZE);
     SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to create TX buffer2.\n");
-    // rte_eth_tx_buffer_set_err_callback(sfcapp_cfg.tx_buffer2,
-    //     rte_eth_tx_buffer_count_callback,&sfcapp_cfg.dropped_pkts);
     rte_eth_tx_buffer_set_err_callback(sfcapp_cfg.tx_buffer2,
-        save_buffer_length_callback,NULL);
+        rte_eth_tx_buffer_count_callback,&sfcapp_cfg.dropped_pkts);
+    // rte_eth_tx_buffer_set_err_callback(sfcapp_cfg.tx_buffer2,
+    //     drop_rtx_cnt_callback,NULL);
 
 
     /* Initialize corresponding tables */

@@ -159,14 +159,14 @@ struct rte_mbuf **tx_pkts, uint64_t *drop_mask){
 }
 __attribute__((noreturn)) void forwarder_main_loop(void){
 
-    uint16_t nb_rx, nb_tx;
+    uint16_t nb_rx;
     struct rte_mbuf *rx_pkts[BURST_SIZE], *tx_pkts[BURST_SIZE];
     uint64_t drop_mask;
     uint64_t prev_tsc, cur_tsc;
     const uint64_t drain_tsc = (rte_get_tsc_hz() + US_PER_S - 1) / US_PER_S * BURST_TX_DRAIN_US;
-    int ret;
     
     prev_tsc = 0;
+    // printf("Forwarder: drain TSC: %" PRIu64 "\n");
 
     for(;;){
         drop_mask = 0;
@@ -186,15 +186,15 @@ __attribute__((noreturn)) void forwarder_main_loop(void){
         if(likely(nb_rx > 0)){
             nb_tx = (uint16_t) forwarder_handle_pkts(rx_pkts,nb_rx,tx_pkts,&drop_mask);
             /* Forwarder uses the same port for rx and tx */
-            // send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
-            ret = rte_eth_tx_burst(sfcapp_cfg.port2,0,tx_pkts,nb_tx);
+            send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
+            // ret = rte_eth_tx_burst(sfcapp_cfg.port2,0,tx_pkts,nb_tx);
             
-            // Free mbufs from packets not TX by iface
-            if (unlikely(ret < nb_tx)) {
-                do {
-                    rte_pktmbuf_free(tx_pkts[ret]);
-                } while (++ret < nb_tx);
-            }
+            // // Free mbufs from packets not TX by iface
+            // if (unlikely(ret < nb_tx)) {
+            //     do {
+            //         rte_pktmbuf_free(tx_pkts[ret]);
+            //     } while (++ret < nb_tx);
+            // }
         }
 
     }
