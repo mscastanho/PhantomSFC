@@ -1,4 +1,4 @@
-﻿#include <stdlib.h>
+#include <stdlib.h>
 
 #include <rte_mbuf.h>
 #include <rte_ether.h>

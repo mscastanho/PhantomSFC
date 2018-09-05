@@ -1,4 +1,4 @@
-﻿#include <stdlib.h>
+#include <stdlib.h>
 
 #include <rte_hash.h>
 #include <rte_jhash.h>
@@ -107,25 +107,6 @@ void proxy_add_sf_address_entry(uint16_t sfid, struct ether_addr *eth_addr){
         " SF Address table.\n",sfid,buf);
 }
 
-int proxy_setup(void){
-
-    int ret = 0;
-
-    ret = proxy_init_flow_table();
-    SFCAPP_CHECK_FAIL_LT(ret,0,
-        "Proxy: Failed to create flow lookup table.\n");
-    ret = proxy_init_sf_addr_table();
-    SFCAPP_CHECK_FAIL_LT(ret,0,
-        "Proxy: Failed to create SF address lookup table.\n");
-    ret = proxy_init_sf_id_lkp_table();
-    SFCAPP_CHECK_FAIL_LT(ret,0,
-        "Proxy: Failed to create SF id lookup table.\n");
-    
-    sfcapp_cfg.main_loop = proxy_main_loop;
-
-    return 0;
-}
-
 /* This function does all the processing on packets coming from 
  * the SFC network to the Legacy SFs. That includes: 
  * 
@@ -136,28 +117,23 @@ int proxy_setup(void){
  * It handles packets in bulks. This can be further optimized by
  * using other DPDK bulk operations.
  */ 
-static void proxy_handle_inbound_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts, 
-    uint64_t *drop_mask){
+static int proxy_handle_inbound_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
 
     struct nsh_hdr nsh_header;
     struct ipv4_5tuple tuple = { .proto = 0, .src_ip = 0, .dst_ip = 0, .src_port = 0, .dst_port = 0};
     uint16_t sfid;
     uint64_t data;
     struct ether_addr sf_mac;
-    int i, lkp;
+    int i, lkp, drop, nb_tx;
     uint16_t offset;
     uint64_t sf_mac_64;
     uint64_t nsh_header_64;
-    *drop_mask = 0;
+
+    nb_tx = 0;
 
     for(i = 0; i < nb_pkts ; i++){
-
-        // lkp = common_check_destination(mbufs[i],&sfcapp_cfg.port1_mac);
-        // if(lkp != 0){
-        //     *drop_mask &= 1<<i;
-        //     continue;
-        // }
-
+        drop = 0;
+        
         nsh_get_header(mbufs[i],&nsh_header);
 
         offset = sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + 
@@ -172,7 +148,7 @@ static void proxy_handle_inbound_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts,
             if( (nsh_header.serv_path & 0x000000FF) != 0 ){
                 nsh_header.serv_path--;
             }else{ /* Drop packet */
-                *drop_mask |= 1<<i;
+                drop = 1;
                 continue;
             }
 
@@ -188,7 +164,7 @@ static void proxy_handle_inbound_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts,
         lkp = rte_hash_lookup_data(proxy_sf_id_lkp_table, 
                 (void *) &nsh_header.serv_path,
                 (void **) &data);
-        COND_MARK_DROP(lkp,drop_mask);
+        COND_MARK_DROP(lkp,drop);
 
         sfid = (uint16_t) data;
 
@@ -196,33 +172,34 @@ static void proxy_handle_inbound_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts,
                 (void *) &sfid,
                 (void **) &sf_mac_64);
 
-        COND_MARK_DROP(lkp,drop_mask);
+        COND_MARK_DROP(lkp,drop);
 
         // Convert hash data back to MAC
         common_64_to_mac(sf_mac_64,&sf_mac);
 
-        common_mac_update(mbufs[i],&sfcapp_cfg.port2_mac,&sf_mac);
-        sfcapp_cfg.rx_pkts++;
+        common_mac_update(mbufs[i],&sfcapp_cfg.ports[1].mac,&sf_mac);
+
+        /* Enqueue packet for TX */
+        nb_tx += rte_eth_tx_buffer(sfcapp_cfg.ports[1].id,0,sfcapp_cfg.ports[1].tx_buffer,mbufs[i]);
+
+        if(unlikely(drop))
+            rte_pktmbuf_free(mbufs[i]);
     }
+
+    return nb_tx;
 }
 
-static void proxy_handle_outbound_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts, 
-    uint64_t *drop_mask){
+static int proxy_handle_outbound_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
     struct nsh_hdr nsh_header;
     uint64_t nsh_header_64;
     struct ipv4_5tuple tuple;
     uint16_t offset;
-    int i,lkp;
+    int i,lkp,drop,nb_tx;
+
+    nb_tx = 0;
 
     for(i = 0 ; i < nb_pkts ; i++){
-
-
-        /* Check if this packet is for me! If not, drop*/
-        lkp = common_check_destination(mbufs[i],&sfcapp_cfg.port2_mac);
-        if(lkp != 0){
-            *drop_mask &= 1<<i;
-            continue;
-        }
+        drop = 0;
 
         //common_dump_pkt(mbufs[i],"\n=== Received from SF ===\n");
 
@@ -234,7 +211,7 @@ static void proxy_handle_outbound_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts
         /* Get packet header from hash table */
         lkp = rte_hash_lookup_data(proxy_flow_lkp_table,
                 (void*) &tuple,(void**) &nsh_header_64);
-        COND_MARK_DROP(lkp,drop_mask);
+        COND_MARK_DROP(lkp,drop);
         
         nsh_uint64_to_header(nsh_header_64,&nsh_header);
         
@@ -242,45 +219,38 @@ static void proxy_handle_outbound_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts
         nsh_encap(mbufs[i],&nsh_header);
 
         /* Add SFF's MAC address */
-        common_mac_update(mbufs[i],&sfcapp_cfg.port1_mac,&sfcapp_cfg.sff_addr);
-        sfcapp_cfg.rx_pkts++;
+        common_mac_update(mbufs[i],&sfcapp_cfg.ports[0].mac,&sfcapp_cfg.sff_addr);
 
         //printf("Sending to SFF...\n");
         //common_dump_pkt(mbufs[i],"\n=== Encapsulated packet ===\n");
+
+        /* Enqueue packet for TX */
+        nb_tx += rte_eth_tx_buffer(sfcapp_cfg.ports[0].id,0,sfcapp_cfg.ports[0].tx_buffer,mbufs[i]);
+
+        if(unlikely(drop))
+            rte_pktmbuf_free(mbufs[i]);
     }
+
+    return nb_tx;
 }
 
-void proxy_main_loop(void){
+int proxy_setup(void){
 
-    struct rte_mbuf *rx_pkts[BURST_SIZE];
-    uint16_t nb_rx;//, nb_tx;
-    uint64_t drop_mask;
+    int ret = 0;
+
+    ret = proxy_init_flow_table();
+    SFCAPP_CHECK_FAIL_LT(ret,0,
+        "Proxy: Failed to create flow lookup table.\n");
+    ret = proxy_init_sf_addr_table();
+    SFCAPP_CHECK_FAIL_LT(ret,0,
+        "Proxy: Failed to create SF address lookup table.\n");
+    ret = proxy_init_sf_id_lkp_table();
+    SFCAPP_CHECK_FAIL_LT(ret,0,
+        "Proxy: Failed to create SF id lookup table.\n");
     
-    for(;;){
-    
-        drop_mask = 0;
-        common_flush_tx_buffers();
+    sfcapp_cfg.ports[0].handle_pkts = proxy_handle_inbound_pkts;
+    sfcapp_cfg.ports[1].handle_pkts = proxy_handle_outbound_pkts;
 
-        /* Receive packets from network */  
-        nb_rx = rte_eth_rx_burst(sfcapp_cfg.port1,0,
-                     rx_pkts,BURST_SIZE);
-
-	    /* Process and decap received packets*/
-        proxy_handle_inbound_pkts(rx_pkts,nb_rx,&drop_mask);
-
-        send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
-
-        drop_mask = 0;
-
-        /* Receive packets from SFs */
-        nb_rx = rte_eth_rx_burst(sfcapp_cfg.port2,0,
-            rx_pkts,BURST_SIZE);
-        
-        /* Process and encap packets from SFs */
-        proxy_handle_outbound_pkts(rx_pkts,nb_rx,&drop_mask);
-
-        send_pkts(rx_pkts,sfcapp_cfg.port1,0,sfcapp_cfg.tx_buffer1,nb_rx,drop_mask); 
-    }
+    return 0;
 }
-
 

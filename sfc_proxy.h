@@ -1,4 +1,4 @@
-﻿#ifndef SFCAPP_PROXY_
+#ifndef SFCAPP_PROXY_
 #define SFCAPP_PROXY_
 
 #include <rte_hash.h>

@@ -1,4 +1,4 @@
-﻿#ifndef SFCAPP_COMMON_
+#ifndef SFCAPP_COMMON_
 #define SFCAPP_COMMON_
 
 #include <rte_cfgfile.h>
@@ -16,9 +16,10 @@
 #define NB_RX_DESC 2048
 #define NB_TX_DESC 2048
 #define BURST_SIZE 64
+#define BURST_TX_DRAIN_US 100
+#define MAX_NB_PORTS 2
 
 #define TX_BUFFER_SIZE 1024
-
 
 #define IP_PROTO_UDP 0x11
 #define IP_PROTO_TCP 0x06
@@ -29,10 +30,10 @@
 
 #define SFCAPP_CHECK_FAIL_LT(var,val,msg) do { if(var < val) rte_exit(EXIT_FAILURE,msg); } while(0)
 
-#define COND_MARK_DROP(lkp,drop_mask) \
+#define COND_MARK_DROP(lkp,drop) \
         if(unlikely(lkp < 0)){ \
             /*printf("Dropping packet!\n");*/ \
-            *drop_mask |= 1<<i; \
+            drop = 1; \
             continue; \
         }
 
@@ -44,6 +45,17 @@ struct ipv4_5tuple {
     uint16_t  dst_port;
 } __attribute__((__packed__));
 
+struct port_cfg {
+    uint32_t id;
+    uint32_t ip;
+    struct ether_addr mac;
+    struct rte_eth_dev_tx_buffer *tx_buffer;
+    /* This function receives a an array of mbufs with received
+     * packets, processes them and returns the number of packets
+     * transmitted, if any. */
+    int (*handle_pkts)(struct rte_mbuf **mbufs, uint16_t nb_pkts);
+};
+
 enum sfcapp_type {
     SFC_PROXY,
     SFC_CLASSIFIER,
@@ -53,13 +65,9 @@ enum sfcapp_type {
 };
 
 struct sfcapp_config {
-    uint8_t port1;
-    struct rte_eth_dev_tx_buffer *tx_buffer1; /* TX buffer for TX port*/         
-    struct ether_addr port1_mac; 
-    struct rte_eth_dev_tx_buffer *tx_buffer2; /* TX buffer for TX port*/         
-    uint8_t port2;   
-    struct ether_addr port2_mac;
-    struct ether_addr sff_addr;                /* MAC address of SFF */
+    struct port_cfg ports[MAX_NB_PORTS];
+    uint16_t nb_ports;
+    struct ether_addr sff_addr;         /* MAC address of SFF */
     enum sfcapp_type type;              /* SFC entity type */
     void (*main_loop)(void);
     uint64_t rx_pkts, tx_pkts, dropped_pkts;

@@ -1,4 +1,4 @@
-﻿#ifndef SFCAPP_CLASSIFIER_
+#ifndef SFCAPP_CLASSIFIER_
 #define SFCAPP_CLASSIFIER_
 
 #include <rte_hash.h>

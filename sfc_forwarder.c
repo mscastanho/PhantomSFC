@@ -1,4 +1,4 @@
-﻿#include <stdio.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include <rte_ethdev.h>
@@ -11,8 +11,6 @@
 #include "sfc_forwarder.h"
 #include "common.h"
 #include "nsh.h"
-
-#define BURST_TX_DRAIN_US 100
 
 extern struct sfcapp_config sfcapp_cfg;
 
@@ -86,54 +84,34 @@ void forwarder_add_sf_address_entry(uint16_t sfid, struct ether_addr *sfmac){
         " SF-address table.\n",sfid,buf);
 }
 
-int forwarder_setup(void){
-    int ret;
-
-    ret = forwarder_init_next_sf_table();
-    SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to initialize Forwarder Next-Func table.\n");
-
-    ret = forwarder_init_sf_addr_table();
-    SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to initialize Forwarder SF Address table.\n");
-
-    sfcapp_cfg.main_loop = forwarder_main_loop;
-    
-    return 0;
-}
-
-
-static inline int forwarder_handle_pkts(struct rte_mbuf **rx_pkts, uint16_t nb_rx, 
-struct rte_mbuf **tx_pkts, uint64_t *drop_mask){
-    int lkp, nb_tx;
+static int forwarder_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
+    int lkp, nb_tx, drop;
     uint16_t i;
     uint64_t data;
     struct nsh_hdr nsh_header;
     uint16_t sfid;
     struct ether_addr sf_addr;
 
-    for(i = 0, nb_tx = 0 ; i < nb_rx ; i++){
+    nb_tx = 0;
+    
+    for(i = 0, nb_tx = 0 ; i < nb_pkts ; i++){
+        drop = 0;
 
-        // /* Check if this packet is for me! If not, drop*/
-        // lkp = common_check_destination(rx_pkts[i],&sfcapp_cfg.port1_mac);
-        // if(lkp != 0){
-        //     *drop_mask |= 1<<i; 
-        //     continue;
-        // }
-
-        nsh_get_header(rx_pkts[i],&nsh_header);
+        nsh_get_header(mbufs[i],&nsh_header);
 
         /* Match SFP to SF in table */
         lkp = rte_hash_lookup_data(forwarder_next_sf_lkp_table,
                 (void*) &nsh_header.serv_path,
                 (void **) &data);
-        COND_MARK_DROP(lkp,drop_mask);
+        COND_MARK_DROP(lkp,drop);
 
         sfid = (uint16_t) data;
        
         if(sfid == 0){  /* End of chain */
-            nsh_decap(rx_pkts[i]);
+            nsh_decap(mbufs[i]);
 
             /* Remove VXLAN encap! */
-            rte_pktmbuf_adj(rx_pkts[i],
+            rte_pktmbuf_adj(mbufs[i],
                 sizeof(struct ether_hdr) +
                 sizeof(struct ipv4_hdr) +
                 sizeof(struct udp_hdr) +
@@ -143,59 +121,33 @@ struct rte_mbuf **tx_pkts, uint64_t *drop_mask){
             lkp = rte_hash_lookup_data(forwarder_next_sf_address_lkp_table,
                     (void*) &sfid,
                     (void**) &data);
-            COND_MARK_DROP(lkp,drop_mask);
+            COND_MARK_DROP(lkp,drop);
             /* Update MACs */
             common_64_to_mac(data,&sf_addr);
-            common_mac_update(rx_pkts[i],&sfcapp_cfg.port2_mac,&sf_addr);
-            //TODO: I need to free mbufs from dropped packets in the logic
+            common_mac_update(mbufs[i],&sfcapp_cfg.ports[1].mac,&sf_addr);
         }
 
-        tx_pkts[nb_tx++] = rx_pkts[i];
-
+        /* Enqueue packet for TX */
+        nb_tx += rte_eth_tx_buffer(sfcapp_cfg.ports[1].id,0,sfcapp_cfg.ports[1].tx_buffer,mbufs[i]);
+    
+        if(unlikely(drop))
+            rte_pktmbuf_free(mbufs[i]);
     }
 
     return nb_tx;
 
 }
-__attribute__((noreturn)) void forwarder_main_loop(void){
 
-    uint16_t nb_rx;
-    struct rte_mbuf *rx_pkts[BURST_SIZE], *tx_pkts[BURST_SIZE];
-    uint64_t drop_mask;
-    uint64_t prev_tsc, cur_tsc;
-    const uint64_t drain_tsc = (rte_get_tsc_hz() + US_PER_S - 1) / US_PER_S * BURST_TX_DRAIN_US;
+int forwarder_setup(void){
+    int ret;
+
+    ret = forwarder_init_next_sf_table();
+    SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to initialize Forwarder Next-Func table.\n");
+
+    ret = forwarder_init_sf_addr_table();
+    SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to initialize Forwarder SF Address table.\n");
+
+    sfcapp_cfg.ports[0].handle_pkts = forwarder_handle_pkts;
     
-    prev_tsc = 0;
-    // printf("Forwarder: drain TSC: %" PRIu64 "\n");
-
-    for(;;){
-        drop_mask = 0;
-
-        cur_tsc = rte_rdtsc();
-
-        if(unlikely(cur_tsc - prev_tsc > drain_tsc)){
-            common_flush_tx_buffers();
-            prev_tsc = cur_tsc;
-        }
-
-        nb_rx = rte_eth_rx_burst(sfcapp_cfg.port1,0,rx_pkts,
-                    BURST_SIZE);
-
-        sfcapp_cfg.rx_pkts += nb_rx;
-        
-        if(likely(nb_rx > 0)){
-            nb_tx = (uint16_t) forwarder_handle_pkts(rx_pkts,nb_rx,tx_pkts,&drop_mask);
-            /* Forwarder uses the same port for rx and tx */
-            send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
-            // ret = rte_eth_tx_burst(sfcapp_cfg.port2,0,tx_pkts,nb_tx);
-            
-            // // Free mbufs from packets not TX by iface
-            // if (unlikely(ret < nb_tx)) {
-            //     do {
-            //         rte_pktmbuf_free(tx_pkts[ret]);
-            //     } while (++ret < nb_tx);
-            // }
-        }
-
-    }
+    return 0;
 }

@@ -1,4 +1,4 @@
-﻿#ifndef SFCAPP_FORWARDER_
+#ifndef SFCAPP_FORWARDER_
 #define SFCAPP_FORWARDER_
 
 #include <rte_hash.h>

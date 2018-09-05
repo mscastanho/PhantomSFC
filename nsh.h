@@ -1,4 +1,4 @@
-﻿#ifndef NSH_H_
+#ifndef NSH_H_
 #define NSH_H_
 
 #include <stdint.h>

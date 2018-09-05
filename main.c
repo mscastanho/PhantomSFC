@@ -9,6 +9,8 @@
 #include <rte_cfgfile.h>
 #include <rte_log.h>
 #include <rte_malloc.h>
+#include <rte_cycles.h>
+#include <rte_common.h>
 
 #include "common.h"
 #include "parser.h"
@@ -18,14 +20,13 @@
 #include "sfc_loopback.h"
 #include "nsh.h"
 
-static uint8_t nb_ports;
 struct sfcapp_config sfcapp_cfg;
 
 char* cfg_filename;
 
 struct rte_mempool *sfcapp_pktmbuf_pool;
 
-static const struct rte_eth_conf port_cfg = {
+static const struct rte_eth_conf dev_cfg = {
     .rxmode = {
         .header_split   = 0, /* Header Split disabled*/
         .split_hdr_size = 0,
@@ -42,27 +43,22 @@ static const struct rte_eth_conf port_cfg = {
 
 static void sfcapp_assoc_ports(int portmask){
     uint8_t i;
-    int count = 2; /* We'll only setup 2 ports */
+    int count = 0; /* We'll only setup 2 ports */
+    int nb_ports_avlb = rte_eth_dev_count();
 
-    nb_ports = rte_eth_dev_count();
-    if(nb_ports < 2)
+    if(nb_ports_avlb < 2)
         rte_exit(EXIT_FAILURE,"Not enough ports! 2 needed.\n");
 
-    for(i = 0 ; i < nb_ports && count > 0 ; i++, count--){
+    for(i = 0 ; i < nb_ports_avlb && count < 2 ; i++){
         if((portmask & (1 << i)) == 0)
             continue;
     
-        switch(count){
-            case 2:
-                sfcapp_cfg.port1 = i;
-                break;
-            case 1:
-                sfcapp_cfg.port2 = i;
-                break;
-            default:
-                break;
-        }
+        sfcapp_cfg.ports[count++].id = i;
     }
+
+    /* Hardcoded since we are only using 1 port for RX and another 
+     * for TX */
+    sfcapp_cfg.nb_ports = 2;
 }
 
 // static const char sfcapp_options[] = {
@@ -214,7 +210,7 @@ alloc_mem(unsigned n_mbuf){
 
 static int
 init_port(uint8_t port, struct rte_mempool *mbuf_pool){
-    struct rte_eth_conf port_conf = port_cfg;
+    struct rte_eth_conf port_conf = dev_cfg;
     int ret;
     uint16_t q;
 
@@ -263,11 +259,53 @@ init_port(uint8_t port, struct rte_mempool *mbuf_pool){
 
 }
 
+static void sfcapp_main_loop(void){
+
+    uint16_t nb_rx, nb_tx;
+    struct rte_mbuf *rx_pkts[BURST_SIZE];
+    uint64_t prev_tsc, cur_tsc;
+    struct port_cfg *p_cfg;
+    const uint64_t drain_tsc = (rte_get_tsc_hz() + US_PER_S - 1) / US_PER_S * BURST_TX_DRAIN_US;
+    int p;
+    
+    prev_tsc = 0;
+
+    for(;;){
+        cur_tsc = rte_rdtsc();
+
+        /* Periodic buffer flush to reduce packet wait time 
+         * in the TX buffer */
+        if(unlikely(cur_tsc - prev_tsc > drain_tsc)){
+            common_flush_tx_buffers();
+            prev_tsc = cur_tsc;
+        }
+
+        for(p = 0 ; p < sfcapp_cfg.nb_ports ; p++){
+            p_cfg = &sfcapp_cfg.ports[p];
+
+            /* Receive pkts */
+            nb_rx = rte_eth_rx_burst(p_cfg->id,0,rx_pkts,
+                        BURST_SIZE);
+            nb_tx = 0;
+
+            /* Process pkts */
+            if(likely(nb_rx > 0 && p_cfg->handle_pkts != NULL)){
+                nb_tx = (uint16_t) p_cfg->handle_pkts(rx_pkts,nb_rx);
+
+            }
+
+            /* Update stats */
+            sfcapp_cfg.rx_pkts += nb_rx;
+            sfcapp_cfg.tx_pkts += nb_tx;
+        }
+    }
+}
+
 int main(int argc, char **argv){
 
-    int ret=0;
+    int i,ret=0;
     unsigned nb_lcores;
-
+    
     ret = rte_eal_init(argc,argv);
     if(ret < 0)
         rte_exit(EXIT_FAILURE, "Invalid EAL arguments.\n");
@@ -294,31 +332,31 @@ int main(int argc, char **argv){
     signal(SIGQUIT, signal_handler);
 
     /* Setup interfaces */
-    ret = init_port(sfcapp_cfg.port1,sfcapp_pktmbuf_pool);
-    SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to setup RX port.\n");
+    for( i = 0 ; i < sfcapp_cfg.nb_ports ; i++ ){
 
-    ret = init_port(sfcapp_cfg.port2,sfcapp_pktmbuf_pool);
-    SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to setup TX port.\n");
+        /* Initialize device */
+        ret = init_port(sfcapp_cfg.ports[i].id,sfcapp_pktmbuf_pool);
+        SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to setup RX port.\n");
+        
+        /* Save MAC address */
+        rte_eth_macaddr_get(sfcapp_cfg.ports[i].id,&sfcapp_cfg.ports[i].mac);
 
-    /* Save port MACs */
-    rte_eth_macaddr_get(sfcapp_cfg.port1,&sfcapp_cfg.port1_mac);
-    rte_eth_macaddr_get(sfcapp_cfg.port2,&sfcapp_cfg.port2_mac);
+        /* Initialize TX buffers */
+        sfcapp_cfg.ports[i].tx_buffer = rte_zmalloc(NULL, RTE_ETH_TX_BUFFER_SIZE(BURST_SIZE), 0);
+        ret = rte_eth_tx_buffer_init(sfcapp_cfg.ports[i].tx_buffer,BURST_SIZE);
+        SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to create TX buffer1.\n");
+        
+        /* Set callbacks */
+        rte_eth_tx_buffer_set_err_callback(sfcapp_cfg.ports[i].tx_buffer,
+            rte_eth_tx_buffer_count_callback,&sfcapp_cfg.dropped_pkts);
 
-    /* Init TX buffers */
-    sfcapp_cfg.tx_buffer1 = rte_zmalloc(NULL, RTE_ETH_TX_BUFFER_SIZE(BURST_SIZE), 0);
-    ret = rte_eth_tx_buffer_init(sfcapp_cfg.tx_buffer1,BURST_SIZE);
-    SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to create TX buffer1.\n");
-    rte_eth_tx_buffer_set_err_callback(sfcapp_cfg.tx_buffer1,
-        rte_eth_tx_buffer_count_callback,&sfcapp_cfg.dropped_pkts);
+        /* Set IP address*/
+        sfcapp_cfg.ports[i].ip = 0; // TODO: changed later
 
-    sfcapp_cfg.tx_buffer2 = rte_zmalloc(NULL, RTE_ETH_TX_BUFFER_SIZE(BURST_SIZE), 0);
-    ret = rte_eth_tx_buffer_init(sfcapp_cfg.tx_buffer2,BURST_SIZE);
-    SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to create TX buffer2.\n");
-    rte_eth_tx_buffer_set_err_callback(sfcapp_cfg.tx_buffer2,
-        rte_eth_tx_buffer_count_callback,&sfcapp_cfg.dropped_pkts);
-    // rte_eth_tx_buffer_set_err_callback(sfcapp_cfg.tx_buffer2,
-    //     drop_rtx_cnt_callback,NULL);
-
+        /* This value will be set by the corresponding element's
+         * setup function. */
+        sfcapp_cfg.ports[i].handle_pkts = NULL;
+    }
 
     /* Initialize corresponding tables */
     setup_app();
@@ -339,7 +377,7 @@ int main(int argc, char **argv){
     
     /* Start application (single core) */
     printf("Running...\n");
-    (sfcapp_cfg.main_loop)();
+    sfcapp_main_loop();
 
     return 0;
 }

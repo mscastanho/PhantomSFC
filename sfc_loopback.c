@@ -1,4 +1,4 @@
-﻿#include <stdio.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include <rte_ethdev.h>
@@ -11,31 +11,24 @@
 
 extern struct sfcapp_config sfcapp_cfg;
 
-int loopback_setup(void){
+static int loopback_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
 
-    sfcapp_cfg.main_loop = loopback_main_loop;
-    rte_eth_promiscuous_enable(sfcapp_cfg.port1);
+    uint16_t nb_tx = 0;
+    int i;
     
-    return 0;
-}
-
-__attribute__((noreturn)) void loopback_main_loop(void){
-
-    uint16_t nb_rx;
-    struct rte_mbuf *rx_pkts[BURST_SIZE];
-    uint64_t drop_mask;
-    
-    for(;;){
-        drop_mask = 0;
-
-        common_flush_tx_buffers();
-
-        nb_rx = rte_eth_rx_burst(sfcapp_cfg.port1,0,rx_pkts,
-                    BURST_SIZE);
-
-        if(likely(nb_rx > 0)){
-            /* Function will only forward packets to second interface without change */
-            send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask);
+    for(i = 0 ; i < nb_pkts ; i++){
+        if(likely(nb_pkts > 0)){
+            nb_tx += rte_eth_tx_buffer(sfcapp_cfg.ports[1].id,0,sfcapp_cfg.ports[1].tx_buffer,mbufs[i]);
         }
     }
+
+    return nb_tx;
+}
+
+int loopback_setup(void){
+
+    sfcapp_cfg.ports[0].handle_pkts = loopback_handle_pkts;
+    rte_eth_promiscuous_enable(sfcapp_cfg.ports[0].id);
+    
+    return 0;
 }

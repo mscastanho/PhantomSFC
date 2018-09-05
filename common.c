@@ -1,4 +1,4 @@
-﻿#include <stdlib.h>
+#include <stdlib.h>
 #include <inttypes.h>
 
 #include <rte_ether.h>
@@ -25,8 +25,10 @@ extern long int n_rx, n_tx;
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 
 void common_flush_tx_buffers(void){
-    sfcapp_cfg.tx_pkts += rte_eth_tx_buffer_flush(sfcapp_cfg.port1,0,sfcapp_cfg.tx_buffer1);
-    sfcapp_cfg.tx_pkts += rte_eth_tx_buffer_flush(sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2);
+    int i;
+    for( i = 0 ; i < sfcapp_cfg.nb_ports ; i++){
+        sfcapp_cfg.tx_pkts += rte_eth_tx_buffer_flush(sfcapp_cfg.ports[i].id,0,sfcapp_cfg.ports[i].tx_buffer);
+    }
 }
 
 void send_pkts(struct rte_mbuf **mbufs, uint8_t tx_port, uint16_t tx_q, 

@@ -1,4 +1,4 @@
-﻿#include <stdio.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include <rte_ethdev.h>
@@ -53,34 +53,21 @@ void classifier_add_flow_class_entry(struct ipv4_5tuple *tuple, uint32_t sfp){
     printf(" -> %" PRIx32 " to classifier flow table\n",sfp);
 }
 
-int classifier_setup(void){
-
-    int ret;
-    ret = classifier_init_flow_path_table();
-    SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to initialize Classifier table\n");
-
-    sfcapp_cfg.main_loop = classifier_main_loop;
-    
-    // Enable promiscuous mode for RX interface
-    rte_eth_promiscuous_enable(sfcapp_cfg.port1);
-
-    return 0;
-}
-
-static void classifier_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts, uint64_t *drop_mask){
+static int classifier_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
     uint16_t i;
     uint64_t path_info;
     struct ipv4_5tuple tuple;
     struct nsh_hdr nsh_header;
-    int lkp,ret;
+    int lkp,ret,drop,nb_tx;
 
-    *drop_mask = 0;
+    nb_tx = 0;
 
     for(i = 0 ; i < nb_pkts ; i++){
-        
+        drop = 0;
+
         /* Get 5-tuple */
         ret = common_ipv4_get_5tuple(mbufs[i],&tuple,0);
-        COND_MARK_DROP(ret,drop_mask);
+        COND_MARK_DROP(ret,drop);
     
         /* Get matching SPH from table */
         lkp = rte_hash_lookup_data(classifier_flow_path_lkp_table,&tuple,(void**) &path_info);
@@ -96,35 +83,31 @@ static void classifier_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts, ui
             /* Encapsulate packet */
             nsh_encap(mbufs[i],&nsh_header);
             
-            common_mac_update(mbufs[i],&sfcapp_cfg.port2_mac,&sfcapp_cfg.sff_addr);
+            common_mac_update(mbufs[i],&sfcapp_cfg.ports[1].mac,&sfcapp_cfg.sff_addr);
             sfcapp_cfg.rx_pkts++;
         }
 
         /* No matching SFP, then just give back to network
          * without modification. 
          */
+
+        /* Enqueue packet for TX */
+        nb_tx += rte_eth_tx_buffer(sfcapp_cfg.ports[1].id,0,sfcapp_cfg.ports[1].tx_buffer,mbufs[i]);
     }
+
+    return nb_tx;
 }
-        
-__attribute__((noreturn)) void classifier_main_loop(void){
-    uint16_t nb_rx;
-    struct rte_mbuf *rx_pkts[BURST_SIZE];
-    uint64_t drop_mask;
 
-    for(;;){
+int classifier_setup(void){
 
-        drop_mask = 0;
+    int ret;
+    ret = classifier_init_flow_path_table();
+    SFCAPP_CHECK_FAIL_LT(ret,0,"Failed to initialize Classifier table\n");
 
-        common_flush_tx_buffers();
-        
-        nb_rx = rte_eth_rx_burst(sfcapp_cfg.port1,0,rx_pkts,
-                    BURST_SIZE);
+    sfcapp_cfg.ports[0].handle_pkts = classifier_handle_pkts;
 
-        /* Classify and encapsulate */
-        if(likely(nb_rx > 0)){  
-            classifier_handle_pkts(rx_pkts,nb_rx,&drop_mask);    
-            send_pkts(rx_pkts,sfcapp_cfg.port2,0,sfcapp_cfg.tx_buffer2,nb_rx,drop_mask); 
-        }
+    // Enable promiscuous mode for RX interface
+    rte_eth_promiscuous_enable(sfcapp_cfg.ports[0].id);
 
-    }
+    return 0;
 }

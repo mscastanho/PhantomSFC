@@ -1,4 +1,4 @@
-﻿#ifndef SFCAPP_LOOPBACK_
+#ifndef SFCAPP_LOOPBACK_
 #define SFCAPP_LOOPBACK_
 
 #include "common.h"

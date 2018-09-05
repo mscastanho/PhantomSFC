@@ -1,4 +1,4 @@
-﻿#ifndef VXLAN_GPE_H_
+#ifndef VXLAN_GPE_H_
 #define VXLAN_GPE_H_
 
 #define VXLAN_NEXT_IP4 0x1
