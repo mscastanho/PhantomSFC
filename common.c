@@ -11,6 +11,7 @@
 
 #include "common.h"
 #include "vxlan_gpe.h"
+#include "nsh.h"
 
 extern struct sfcapp_config sfcapp_cfg;
 extern long int n_rx, n_tx;
@@ -199,4 +200,34 @@ void common_vxlan_encap(struct rte_mbuf *mbuf){
 
     vxlan_hdr->vx_flags = rte_cpu_to_be_32(VXLAN_INSTANCE_FLAG);
     vxlan_hdr->vx_vni = rte_cpu_to_be_32(SFCAPP_DEFAULT_VNI << 8);
+}
+
+/* This function encapsulates a given packet with external 
+ * Ethernet + NSH headers. This should be used by the classifier to
+ * handle incoming packets.
+ */
+void common_encap(struct rte_mbuf *mbuf){
+    struct ether_hdr *eth_hdr;
+    struct nsh_hdr *nsh_hdr;
+
+    eth_hdr = (struct ether_hdr *) rte_pktmbuf_prepend(mbuf,sizeof(struct ether_hdr) + 
+        sizeof(struct nsh_hdr));
+    
+    nsh_hdr  = (struct nsh_hdr *) (((char*) eth_hdr) + sizeof(struct ether_hdr));
+
+    /* Outer MAC addresses must be updated by caller function later */
+    eth_hdr->ether_type = rte_cpu_to_be_16(ETHER_TYPE_NSH);
+
+    /* Initialize NSH header with default values*/
+    nsh_init_header(nsh_hdr);
+    /* nsh_hdr->serv_path = should be set by caller function */
+}
+
+/* This function does the opposite of common_encap(), thus removing
+ * the outer Ethernet + NSH encapsulations.
+ */
+void common_decap(struct rte_mbuf *mbuf){
+    rte_pktmbuf_adj(mbuf,
+        sizeof(struct ether_hdr) +
+        sizeof(struct nsh_hdr));
 }

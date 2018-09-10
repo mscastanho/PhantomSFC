@@ -101,4 +101,8 @@ int common_check_destination(struct rte_mbuf *mbuf, struct ether_addr *mac);
 
 void common_vxlan_encap(struct rte_mbuf *mbuf);
 
+void common_encap(struct rte_mbuf *mbuf);
+
+void common_decap(struct rte_mbuf *mbuf);
+
 #endif

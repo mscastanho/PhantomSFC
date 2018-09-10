@@ -7,6 +7,7 @@
 #include <rte_jhash.h>
 #include <rte_cycles.h>
 #include <rte_common.h>
+#include <rte_byteorder.h>
 
 #include "sfc_forwarder.h"
 #include "common.h"
@@ -88,7 +89,8 @@ static int forwarder_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
     int lkp, nb_tx, drop;
     uint16_t i;
     uint64_t data;
-    struct nsh_hdr nsh_header;
+    struct nsh_hdr *nsh_header;
+    uint32_t serv_path;
     uint16_t sfid;
     struct ether_addr sf_addr;
 
@@ -97,25 +99,22 @@ static int forwarder_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
     for(i = 0, nb_tx = 0 ; i < nb_pkts ; i++){
         drop = 0;
 
-        nsh_get_header(mbufs[i],&nsh_header);
+        // common_dump_pkt(mbufs[i],"\n\n=== pkt before ===\n");
+
+        nsh_header = rte_pktmbuf_mtod_offset(mbufs[i],struct nsh_hdr *, sizeof(struct ether_hdr));
+        serv_path = rte_be_to_cpu_32(nsh_header->serv_path);
 
         /* Match SFP to SF in table */
         lkp = rte_hash_lookup_data(forwarder_next_sf_lkp_table,
-                (void*) &nsh_header.serv_path,
+                (void*) &serv_path,
                 (void **) &data);
         COND_MARK_DROP(lkp,drop);
 
         sfid = (uint16_t) data;
        
         if(sfid == 0){  /* End of chain */
-            nsh_decap(mbufs[i]);
-
-            /* Remove VXLAN encap! */
-            rte_pktmbuf_adj(mbufs[i],
-                sizeof(struct ether_hdr) +
-                sizeof(struct ipv4_hdr) +
-                sizeof(struct udp_hdr) +
-                sizeof(struct vxlan_hdr));
+            /* Remove encapsulation */
+            common_decap(mbufs[i]);
         }else{
             /* Match SFID to address in table */
             lkp = rte_hash_lookup_data(forwarder_next_sf_address_lkp_table,
@@ -127,9 +126,12 @@ static int forwarder_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
             common_mac_update(mbufs[i],&sfcapp_cfg.ports[1].mac,&sf_addr);
         }
 
+        // common_dump_pkt(mbufs[i],"\n\n=== pkt after ===\n");
+        
         /* Enqueue packet for TX */
         nb_tx += rte_eth_tx_buffer(sfcapp_cfg.ports[1].id,0,sfcapp_cfg.ports[1].tx_buffer,mbufs[i]);
     
+        
         if(unlikely(drop))
             rte_pktmbuf_free(mbufs[i]);
     }

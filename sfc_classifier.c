@@ -57,7 +57,7 @@ static int classifier_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
     uint16_t i;
     uint64_t path_info;
     struct ipv4_5tuple tuple;
-    struct nsh_hdr nsh_header;
+    struct nsh_hdr *nsh_header;
     int lkp,ret,drop,nb_tx;
 
     nb_tx = 0;
@@ -65,6 +65,7 @@ static int classifier_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
     for(i = 0 ; i < nb_pkts ; i++){
         drop = 0;
 
+        // common_dump_pkt(mbufs[i],"\n\n=== pkt before ===\n");
         /* Get 5-tuple */
         ret = common_ipv4_get_5tuple(mbufs[i],&tuple,0);
         COND_MARK_DROP(ret,drop);
@@ -74,17 +75,17 @@ static int classifier_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
 
         if(lkp >= 0){ /* Has entry in table */
 
-            /* Encapsulate with VXLAN */
-            common_vxlan_encap(mbufs[i]);
+            /* Encapsulate with Ethernet + NSH */
+            common_encap(mbufs[i]);
             
-            nsh_init_header(&nsh_header);
-            nsh_header.serv_path = (uint32_t) path_info;
+            nsh_header = rte_pktmbuf_mtod_offset(mbufs[i],struct nsh_hdr *,sizeof(struct ether_hdr));
 
-            /* Encapsulate packet */
-            nsh_encap(mbufs[i],&nsh_header);
-            
+            nsh_header->serv_path = rte_cpu_to_be_32((uint32_t) path_info);
+
             common_mac_update(mbufs[i],&sfcapp_cfg.ports[1].mac,&sfcapp_cfg.sff_addr);
             sfcapp_cfg.rx_pkts++;
+
+            // common_dump_pkt(mbufs[i],"\n=== pkt after ===\n");
         }
 
         /* No matching SFP, then just give back to network

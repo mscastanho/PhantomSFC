@@ -11,8 +11,6 @@
 #include "nsh.h"
 #include "common.h"
 
-#define VXLAN_NSH_INNER_OFFSET 58
-
 extern struct sfcapp_config sfcapp_cfg;
 
 static struct rte_hash *proxy_flow_lkp_table;
