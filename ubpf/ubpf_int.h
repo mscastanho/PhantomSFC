@@ -21,7 +21,7 @@
 #include "ebpf.h"
 
 #define MAX_INSTS 65536
-#define STACK_SIZE 128
+#define STACK_SIZE 16384
 
 struct ebpf_inst;
 typedef uint64_t (*ext_func)(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4);
@@ -33,6 +33,7 @@ struct ubpf_vm {
     size_t jitted_size;
     ext_func *ext_funcs;
     const char **ext_func_names;
+    int tables; // bpf map containing the list of tables
 };
 
 char *ubpf_error(const char *fmt, ...);

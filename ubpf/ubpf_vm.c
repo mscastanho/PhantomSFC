@@ -20,14 +20,17 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <inttypes.h>
 #include <sys/mman.h>
+#include <endian.h>
 #include "ubpf_int.h"
+
+#include "bpfmap.h"
 
 #define MAX_EXT_FUNCS 64
 
 static bool validate(const struct ubpf_vm *vm, const struct ebpf_inst *insts, uint32_t num_insts, char **errmsg);
-static bool bounds_check(void *addr, int size, const char *type, uint16_t cur_pc, void *mem, size_t mem_len, void *stack);
 
 struct ubpf_vm *
 ubpf_create(void)
@@ -45,6 +48,14 @@ ubpf_create(void)
 
     vm->ext_func_names = calloc(MAX_EXT_FUNCS, sizeof(*vm->ext_func_names));
     if (vm->ext_func_names == NULL) {
+        ubpf_destroy(vm);
+        return NULL;
+    }
+
+    /* meta table containing reference to the other tables, 32 characters key, int fd value, max 64 entries */
+    vm->tables = bpf_create_map(BPF_MAP_TYPE_HASH, TABLE_NAME_MAX_LENGTH, sizeof(struct table_entry), TABLE_MAX_ENTRIES);
+    if (vm->tables < 0) {
+        perror("Error creating bpf map");
         ubpf_destroy(vm);
         return NULL;
     }
@@ -95,8 +106,9 @@ ubpf_load(struct ubpf_vm *vm, const void *code, uint32_t code_len, char **errmsg
     *errmsg = NULL;
 
     if (vm->insts) {
-        *errmsg = ubpf_error("code has already been loaded into this VM");
-        return -1;
+        free(vm->insts); // Allow loading multi BPF programs
+        // *errmsg = ubpf_error("code has already been loaded into this VM");
+        // return -1;
     }
 
     if (code_len % 8 != 0) {
@@ -131,7 +143,7 @@ ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len)
 {
     uint16_t pc = 0;
     const struct ebpf_inst *insts = vm->insts;
-    uint64_t reg[16];
+    uint64_t reg[16] = {0};
     uint64_t stack[(STACK_SIZE+7)/8];
 
     if (!insts) {
@@ -364,18 +376,8 @@ ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len)
          *
          * Needed since we don't have a verifier yet.
          */
-#define BOUNDS_CHECK_LOAD(size) \
-    do { \
-        if (!bounds_check((void *)reg[inst.src] + inst.offset, size, "load", cur_pc, mem, mem_len, stack)) { \
-            return UINT64_MAX; \
-        } \
-    } while (0)
-#define BOUNDS_CHECK_STORE(size) \
-    do { \
-        if (!bounds_check((void *)reg[inst.dst] + inst.offset, size, "store", cur_pc, mem, mem_len, stack)) { \
-            return UINT64_MAX; \
-        } \
-    } while (0)
+#define BOUNDS_CHECK_LOAD(size)
+#define BOUNDS_CHECK_STORE(size)
 
         case EBPF_OP_LDXW:
             BOUNDS_CHECK_LOAD(4);
@@ -465,26 +467,6 @@ ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len)
                 pc += inst.offset;
             }
             break;
-        case EBPF_OP_JLT_IMM:
-            if (reg[inst.dst] < (uint32_t)inst.imm) {
-                pc += inst.offset;
-            }
-            break;
-        case EBPF_OP_JLT_REG:
-            if (reg[inst.dst] < reg[inst.src]) {
-                pc += inst.offset;
-            }
-            break;
-        case EBPF_OP_JLE_IMM:
-            if (reg[inst.dst] <= (uint32_t)inst.imm) {
-                pc += inst.offset;
-            }
-            break;
-        case EBPF_OP_JLE_REG:
-            if (reg[inst.dst] <= reg[inst.src]) {
-                pc += inst.offset;
-            }
-            break;
         case EBPF_OP_JSET_IMM:
             if (reg[inst.dst] & inst.imm) {
                 pc += inst.offset;
@@ -525,26 +507,6 @@ ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len)
                 pc += inst.offset;
             }
             break;
-        case EBPF_OP_JSLT_IMM:
-            if ((int64_t)reg[inst.dst] < inst.imm) {
-                pc += inst.offset;
-            }
-            break;
-        case EBPF_OP_JSLT_REG:
-            if ((int64_t)reg[inst.dst] < (int64_t)reg[inst.src]) {
-                pc += inst.offset;
-            }
-            break;
-        case EBPF_OP_JSLE_IMM:
-            if ((int64_t)reg[inst.dst] <= inst.imm) {
-                pc += inst.offset;
-            }
-            break;
-        case EBPF_OP_JSLE_REG:
-            if ((int64_t)reg[inst.dst] <= (int64_t)reg[inst.src]) {
-                pc += inst.offset;
-            }
-            break;
         case EBPF_OP_EXIT:
             return reg[0];
         case EBPF_OP_CALL:
@@ -562,10 +524,10 @@ validate(const struct ubpf_vm *vm, const struct ebpf_inst *insts, uint32_t num_i
         return false;
     }
 
-    if (num_insts == 0 || insts[num_insts-1].opcode != EBPF_OP_EXIT) {
+/*    if (num_insts == 0 || insts[num_insts-1].opcode != EBPF_OP_EXIT) {
         *errmsg = ubpf_error("no exit at end of instructions");
         return false;
-    }
+    }*/
 
     int i;
     for (i = 0; i < num_insts; i++) {
@@ -663,10 +625,6 @@ validate(const struct ubpf_vm *vm, const struct ebpf_inst *insts, uint32_t num_i
         case EBPF_OP_JGT_IMM:
         case EBPF_OP_JGE_REG:
         case EBPF_OP_JGE_IMM:
-        case EBPF_OP_JLT_REG:
-        case EBPF_OP_JLT_IMM:
-        case EBPF_OP_JLE_REG:
-        case EBPF_OP_JLE_IMM:
         case EBPF_OP_JSET_REG:
         case EBPF_OP_JSET_IMM:
         case EBPF_OP_JNE_REG:
@@ -675,10 +633,6 @@ validate(const struct ubpf_vm *vm, const struct ebpf_inst *insts, uint32_t num_i
         case EBPF_OP_JSGT_REG:
         case EBPF_OP_JSGE_IMM:
         case EBPF_OP_JSGE_REG:
-        case EBPF_OP_JSLT_IMM:
-        case EBPF_OP_JSLT_REG:
-        case EBPF_OP_JSLE_IMM:
-        case EBPF_OP_JSLE_REG:
             if (inst.offset == -1) {
                 *errmsg = ubpf_error("infinite loop at PC %d", i);
                 return false;
@@ -736,22 +690,6 @@ validate(const struct ubpf_vm *vm, const struct ebpf_inst *insts, uint32_t num_i
     return true;
 }
 
-static bool
-bounds_check(void *addr, int size, const char *type, uint16_t cur_pc, void *mem, size_t mem_len, void *stack)
-{
-    if (mem && (addr >= mem && (addr + size) <= (mem + mem_len))) {
-        /* Context access */
-        return true;
-    } else if (addr >= stack && (addr + size) <= (stack + STACK_SIZE)) {
-        /* Stack access */
-        return true;
-    } else {
-        fprintf(stderr, "uBPF error: out of bounds memory %s at PC %u, addr %p, size %d\n", type, cur_pc, addr, size);
-        fprintf(stderr, "mem %p/%zd stack %p/%d\n", mem, mem_len, stack, STACK_SIZE);
-        return false;
-    }
-}
-
 char *
 ubpf_error(const char *fmt, ...)
 {
@@ -763,4 +701,8 @@ ubpf_error(const char *fmt, ...)
     }
     va_end(ap);
     return msg;
+}
+
+int ubpf_get_tables(const struct ubpf_vm *vm) {
+    return vm->tables;
 }

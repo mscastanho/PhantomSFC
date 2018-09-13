@@ -18,7 +18,6 @@
 #define UBPF_H
 
 #include <stdint.h>
-#include <stddef.h>
 
 struct ubpf_vm;
 typedef uint64_t (*ubpf_jit_fn)(void *mem, size_t mem_len);
@@ -74,5 +73,18 @@ int ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_len, char **er
 uint64_t ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len);
 
 ubpf_jit_fn ubpf_compile(struct ubpf_vm *vm, char **errmsg);
+
+
+#define TABLE_NAME_MAX_LENGTH 32
+#define TABLE_MAX_ENTRIES 64
+struct table_entry {
+    int fd;
+    int type;
+    int key_size;
+    int value_size;
+    int max_entries;
+};
+
+int ubpf_get_tables(const struct ubpf_vm *vm);
 
 #endif

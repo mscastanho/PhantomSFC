@@ -1,6 +1,5 @@
 /*
  * Copyright 2015 Big Switch Networks, Inc
- * Copyright 2017 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -98,6 +97,9 @@ translate(struct ubpf_vm *vm, struct jit_state *state, char **errmsg)
 
     /* Allocate stack space */
     emit_alu64_imm32(state, 0x81, 5, RSP, STACK_SIZE);
+
+//    /* Copy stack pointer to R10 */
+//    emit_mov(state, RSP, map_register(10));
 
     int i;
     for (i = 0; i < vm->num_insts; i++) {
@@ -293,22 +295,6 @@ translate(struct ubpf_vm *vm, struct jit_state *state, char **errmsg)
             emit_cmp(state, src, dst);
             emit_jcc(state, 0x83, target_pc);
             break;
-        case EBPF_OP_JLT_IMM:
-            emit_cmp_imm32(state, dst, inst.imm);
-            emit_jcc(state, 0x82, target_pc);
-            break;
-        case EBPF_OP_JLT_REG:
-            emit_cmp(state, src, dst);
-            emit_jcc(state, 0x82, target_pc);
-            break;
-        case EBPF_OP_JLE_IMM:
-            emit_cmp_imm32(state, dst, inst.imm);
-            emit_jcc(state, 0x86, target_pc);
-            break;
-        case EBPF_OP_JLE_REG:
-            emit_cmp(state, src, dst);
-            emit_jcc(state, 0x86, target_pc);
-            break;
         case EBPF_OP_JSET_IMM:
             emit_alu64_imm32(state, 0xf7, 0, dst, inst.imm);
             emit_jcc(state, 0x85, target_pc);
@@ -340,22 +326,6 @@ translate(struct ubpf_vm *vm, struct jit_state *state, char **errmsg)
         case EBPF_OP_JSGE_REG:
             emit_cmp(state, src, dst);
             emit_jcc(state, 0x8d, target_pc);
-            break;
-        case EBPF_OP_JSLT_IMM:
-            emit_cmp_imm32(state, dst, inst.imm);
-            emit_jcc(state, 0x8c, target_pc);
-            break;
-        case EBPF_OP_JSLT_REG:
-            emit_cmp(state, src, dst);
-            emit_jcc(state, 0x8c, target_pc);
-            break;
-        case EBPF_OP_JSLE_IMM:
-            emit_cmp_imm32(state, dst, inst.imm);
-            emit_jcc(state, 0x8e, target_pc);
-            break;
-        case EBPF_OP_JSLE_REG:
-            emit_cmp(state, src, dst);
-            emit_jcc(state, 0x8e, target_pc);
             break;
         case EBPF_OP_CALL:
             /* We reserve RCX for shifts */
@@ -460,19 +430,20 @@ muldivmod(struct jit_state *state, uint16_t pc, uint8_t opcode, int src, int dst
     bool mod = (opcode & EBPF_ALU_OP_MASK) == (EBPF_OP_MOD_IMM & EBPF_ALU_OP_MASK);
     bool is64 = (opcode & EBPF_CLS_MASK) == EBPF_CLS_ALU64;
 
-    if (div || mod) {
-        emit_load_imm(state, RCX, pc);
-
-        /* test src,src */
-        if (is64) {
-            emit_alu64(state, 0x85, src, src);
-        } else {
-            emit_alu32(state, 0x85, src, src);
-        }
-
-        /* jz div_by_zero */
-        emit_jcc(state, 0x84, TARGET_PC_DIV_BY_ZERO);
-    }
+    // TODO: This causes problem with modulo? test src, src when src is 0 divide by zero, should this be done only when immediate isn't present?
+    // if (div || mod) {
+    //     emit_load_imm(state, RCX, pc);
+    //
+    //     /* test src,src */
+    //     if (is64) {
+    //         emit_alu64(state, 0x85, src, src);
+    //     } else {
+    //         emit_alu32(state, 0x85, src, src);
+    //     }
+    //
+    //     /* jz div_by_zero */
+    //     emit_jcc(state, 0x84, TARGET_PC_DIV_BY_ZERO);
+    // }
 
     if (dst != RAX) {
         emit_push(state, RAX);
@@ -545,17 +516,6 @@ ubpf_compile(struct ubpf_vm *vm, char **errmsg)
     size_t jitted_size;
     struct jit_state state;
 
-    if (vm->jitted) {
-        return vm->jitted;
-    }
-
-    *errmsg = NULL;
-
-    if (!vm->insts) {
-        *errmsg = ubpf_error("code has not been loaded into this VM");
-        return NULL;
-    }
-
     state.offset = 0;
     state.size = 65536;
     state.buf = calloc(state.size, 1);
@@ -563,8 +523,19 @@ ubpf_compile(struct ubpf_vm *vm, char **errmsg)
     state.jumps = calloc(MAX_INSTS, sizeof(state.jumps[0]));
     state.num_jumps = 0;
 
+    *errmsg = NULL;
+
+    if (vm->jitted) {
+        return vm->jitted;
+    }
+
+    if (!vm->insts) {
+        *errmsg = ubpf_error("code has not been loaded into this VM");
+        return NULL;
+    }
+
     if (translate(vm, &state, errmsg) < 0) {
-        goto out;
+        goto error;
     }
 
     resolve_jumps(vm, &state);
@@ -573,25 +544,25 @@ ubpf_compile(struct ubpf_vm *vm, char **errmsg)
     jitted = mmap(0, jitted_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (jitted == MAP_FAILED) {
         *errmsg = ubpf_error("internal uBPF error: mmap failed: %s\n", strerror(errno));
-        goto out;
+        goto error;
     }
 
     memcpy(jitted, state.buf, jitted_size);
 
     if (mprotect(jitted, jitted_size, PROT_READ | PROT_EXEC) < 0) {
         *errmsg = ubpf_error("internal uBPF error: mprotect failed: %s\n", strerror(errno));
-        goto out;
+        goto error;
     }
 
+    free(state.buf);
     vm->jitted = jitted;
     vm->jitted_size = jitted_size;
+    return vm->jitted;
 
-out:
-    free(state.buf);
-    free(state.pc_locs);
-    free(state.jumps);
-    if (jitted && vm->jitted == NULL) {
+error:
+    if (jitted) {
         munmap(jitted, jitted_size);
     }
-    return vm->jitted;
+    free(state.buf);
+    return NULL;
 }
