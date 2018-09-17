@@ -1,0 +1,11 @@
+.vscode/*
+build/*
+sfc/build/*
+exclude-list.txt
+*.a
+test
+*.o
+*.gcov
+*.gcda
+*.gcno
+roadmap.md
