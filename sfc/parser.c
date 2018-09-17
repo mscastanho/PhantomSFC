@@ -434,3 +434,19 @@ void parse_config_file(char* cfg_filename){
     free(sections);
     rte_cfgfile_close(cfgfile);
 }
+
+char* parse_ebpf_file(char* ebpf_filename, long int* elf_len){
+    FILE *ebpf_prog;
+    char* elf_content;
+
+    ebpf_prog = fopen(ebpf_filename,"rb");
+    
+    /* Get file size */
+    fseek(ebpf_prog, 0L, SEEK_END);
+    *elf_len = ftell(ebpf_prog);
+
+    /* Allocate memory for ELF contents*/
+    elf_content = malloc((*elf_len)*sizeof(char));
+
+    return elf_content;
+}

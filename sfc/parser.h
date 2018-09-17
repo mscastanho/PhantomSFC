@@ -19,4 +19,6 @@ int parse_ipv4(const char *str, uint32_t *ipv4);
 
 void parse_config_file(char* cfg_filename);
 
+char* parse_ebpf_file(char* ebpf_filename, long int* elf_len);
+
 #endif /* PARSER_H_ */

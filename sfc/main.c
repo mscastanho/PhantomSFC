@@ -22,7 +22,8 @@
 
 struct sfcapp_config sfcapp_cfg;
 
-char* cfg_filename;
+char* cfg_filename = NULL;
+char* elf_filename = NULL;
 
 struct rte_mempool *sfcapp_pktmbuf_pool;
 
@@ -61,13 +62,14 @@ static void sfcapp_assoc_ports(int portmask){
     sfcapp_cfg.nb_ports = 2;
 }
 
-// static const char sfcapp_options[] = {
-//     'p', /* Port mask */
-//     't', /* SFC entity type*/
-//     'f', /* Configuration file */
-//     'h', /* Print usage */
-//     'H' /* Hash table size*/
-// };
+const struct option sfcapp_options[] = {
+    {"pmask"    , required_argument , 0 ,   'p' }, /* Port mask */
+    {"type"     , required_argument , 0 ,   't' }, /* SFC entity type*/
+    {"config"   , required_argument , 0 ,   'c' }, /* Configuration file */
+    {"help"     , no_argument       , 0 ,   'h' }, /* Print usage */
+    {"ebpf"     , required_argument , 0 ,   'e' }, /* Enable eBPF classification */
+    {0          , 0                 , 0 ,   0   },
+};
 
 static void 
 parse_args(int argc, char **argv){
@@ -81,7 +83,7 @@ parse_args(int argc, char **argv){
     int pm;
     enum sfcapp_type type;
 
-    while( (sfcapp_opt = getopt(argc,argv,"p:t:hH:f:")) != -1){
+    while( (sfcapp_opt = getopt_long(argc,argv,"p:t:c:he:",sfcapp_options,NULL)) != -1){
         switch(sfcapp_opt){
             case 'p':
                 pm = parse_portmask(optarg);
@@ -97,12 +99,13 @@ parse_args(int argc, char **argv){
                 else
                     sfcapp_cfg.type = type;
                 break;
-            case 'f':
+            case 'c':
                 cfg_filename = optarg;
                 break;
             case 'h':
                 break;
-            case 'H':
+            case 'e':
+                elf_filename = optarg;
                 break;
             case '?':
                 break;
@@ -117,13 +120,23 @@ static void setup_app(void){
 
     switch(sfcapp_cfg.type){
         case SFC_CLASSIFIER:
-            classifier_setup();
+            if(elf_filename == NULL){
+                classifier_setup();
+                parse_config_file(cfg_filename);
+            }else{
+                char* elf;
+                long int len;
+                elf = parse_ebpf_file(elf_filename,&len);
+                classifier_bpf_setup((void*) elf,len);
+            }
             break;
         case SFC_FORWARDER:
             forwarder_setup();
+            parse_config_file(cfg_filename);
             break;
         case SFC_PROXY:
             proxy_setup();
+            parse_config_file(cfg_filename);
             break;
         case SFC_LOOPBACK:
             loopback_setup();
@@ -131,7 +144,7 @@ static void setup_app(void){
         case NONE:
             rte_exit(EXIT_FAILURE,"App type not detected, something is wrong!\n");
             break;
-    };
+    };       
 }
 
 static void print_stats(void)
@@ -360,10 +373,6 @@ int main(int argc, char **argv){
 
     /* Initialize corresponding tables */
     setup_app();
-
-    /* Read config file and setup app*/
-    if(sfcapp_cfg.type != SFC_LOOPBACK)
-        parse_config_file(cfg_filename);
 
     /* Print SFF's MAC read from config files */
     char mac[64];

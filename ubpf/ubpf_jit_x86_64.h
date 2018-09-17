@@ -23,6 +23,7 @@
 
 #include <string.h>
 #include <stdint.h>
+#include <assert.h>
 
 #define RAX 0
 #define RCX 1
