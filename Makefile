@@ -1,10 +1,10 @@
 all: ubpf-vm bpf-maps phantomsfc
 
-ubpf-vm:
-	cd ubpf && $(MAKE)
-
 bpf-maps:
 	cd bpfmap && $(MAKE)
+
+ubpf-vm: bpf-maps
+	cd ubpf && $(MAKE)
 
 phantomsfc: ubpf-vm
 	cd sfc && $(MAKE)
