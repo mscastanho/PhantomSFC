@@ -127,7 +127,7 @@ static void setup_app(void){
                 char* elf;
                 long int len;
                 elf = parse_ebpf_file(elf_filename,&len);
-                classifier_bpf_setup((void*) elf,len);
+                classifier_ebpf_setup((void*) elf,len);
             }
             break;
         case SFC_FORWARDER:

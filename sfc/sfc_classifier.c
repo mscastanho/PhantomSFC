@@ -108,7 +108,7 @@ static int classifier_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
     return nb_tx;
 }
 
-static int classifier_bpf_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
+static int classifier_ebpf_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts){
     uint16_t i;
     uint64_t path_info;
     int lkp,nb_tx;
@@ -144,7 +144,7 @@ int classifier_setup(void){
     return 0;
 }
 
-int classifier_bpf_setup(void *elf, int len){
+int classifier_ebpf_setup(void *elf, int len){
 
     int ret = 0;
     int err;
@@ -176,7 +176,7 @@ int classifier_bpf_setup(void *elf, int len){
     
     /* --- */
 
-    sfcapp_cfg.ports[0].handle_pkts = classifier_bpf_handle_pkts;
+    sfcapp_cfg.ports[0].handle_pkts = classifier_ebpf_handle_pkts;
 
     // Enable promiscuous mode for RX interface
     rte_eth_promiscuous_enable(sfcapp_cfg.ports[0].id);

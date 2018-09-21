@@ -11,7 +11,7 @@
 void classifier_add_flow_class_entry(struct ipv4_5tuple *tuple, uint32_t sfp);
 
 int classifier_setup(void);
-int classifier_bpf_setup(void *elf, int len);
+int classifier_ebpf_setup(void *elf, int len);
 
 __attribute__((noreturn)) void 
 classifier_main_loop(void);
