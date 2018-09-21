@@ -1,0 +1,5 @@
+/* Based on code from BPFabric project - https://github.com/UofG-netlab/BPFabric.git */
+message Notify {
+    required uint32 id = 1;
+    required bytes data = 2;
+}

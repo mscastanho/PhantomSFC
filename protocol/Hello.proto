@@ -1,0 +1,5 @@
+/* Based on code from BPFabric project - https://github.com/UofG-netlab/BPFabric.git */
+message Hello {
+    required uint32 version = 1;
+    required uint64 dpid = 2;
+}

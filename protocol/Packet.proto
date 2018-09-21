@@ -1,0 +1,9 @@
+/* Based on code from BPFabric project - https://github.com/UofG-netlab/BPFabric.git */
+message PacketIn {
+    required bytes data = 1;
+}
+
+message PacketOut {
+    required bytes data = 1;
+    required uint64 out_port = 2;
+}
