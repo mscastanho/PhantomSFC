@@ -61,12 +61,13 @@ static void sfcapp_assoc_ports(int portmask){
 }
 
 const struct option sfcapp_options[] = {
-    {"pmask"    , required_argument , 0 ,   'p' }, /* Port mask */
-    {"type"     , required_argument , 0 ,   't' }, /* SFC entity type*/
-    {"config"   , required_argument , 0 ,   'c' }, /* Configuration file */
-    {"help"     , no_argument       , 0 ,   'h' }, /* Print usage */
-    {"ebpf"     , required_argument , 0 ,   'e' }, /* Enable eBPF classification */
-    {0          , 0                 , 0 ,   0   },
+    {"pmask"     , required_argument , 0 ,   'p' }, /* Port mask */
+    {"type"      , required_argument , 0 ,   't' }, /* SFC entity type*/
+    {"config"    , required_argument , 0 ,   'c' }, /* Configuration file */
+    {"help"      , no_argument       , 0 ,   'h' }, /* Print usage */
+    {"ebpf"      , required_argument , 0 ,   'e' }, /* Enable eBPF classification */
+    {"controller", required_argument , 0 ,   'a' },
+    {0           , 0                 , 0 ,    0  },
 };
 
 static void 
@@ -78,10 +79,10 @@ parse_args(int argc, char **argv){
      * -h : Print usage information
      */
     int sfcapp_opt;
-    int pm;
+    int pm,err;
     enum sfcapp_type type;
 
-    while( (sfcapp_opt = getopt_long(argc,argv,"p:t:c:he:",sfcapp_options,NULL)) != -1){
+    while( (sfcapp_opt = getopt_long(argc,argv,"p:t:c:he:a:",sfcapp_options,NULL)) != -1){
         switch(sfcapp_opt){
             case 'p':
                 pm = parse_portmask(optarg);
@@ -105,6 +106,10 @@ parse_args(int argc, char **argv){
             case 'e':
                 elf_filename = optarg;
                 break;
+            case 'a':
+                err = parse_ctrlr_addr(optarg,&sfcapp_cfg.controller_addr);
+                if(err)
+                    rte_exit(EXIT_FAILURE,"Unable to parse controller address: %s\n",optarg);
             case '?':
                 break;
             default:
@@ -325,6 +330,11 @@ int main(int argc, char **argv){
 
     argc -= ret;
     argv += ret;
+
+    /* Default controller address is 127.0.0.1:9000
+     * This might be reset inside parse_args */
+    sfcapp_cfg.controller_addr.ip = 0x7f000001;
+    sfcapp_cfg.controller_addr.port = 9000;
 
     parse_args(argc,argv);
 

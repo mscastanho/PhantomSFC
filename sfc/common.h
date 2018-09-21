@@ -64,11 +64,18 @@ enum sfcapp_type {
     NONE
 };
 
+/* Controller's IP + port address */
+struct ctrlr_addr {
+    uint32_t ip;
+    uint16_t port;
+};
+
 struct sfcapp_config {
     struct port_cfg ports[MAX_NB_PORTS];
     uint16_t nb_ports;
     struct ether_addr sff_addr;         /* MAC address of SFF */
     enum sfcapp_type type;              /* SFC entity type */
+    struct ctrlr_addr controller_addr;  
     void (*main_loop)(void);
     uint64_t rx_pkts, tx_pkts, dropped_pkts;
 };

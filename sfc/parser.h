@@ -1,6 +1,8 @@
 #ifndef PARSER_H_
 #define PARSER_H_
 
+#include "common.h"
+
 int parse_portmask(const char *portmask);
 
 enum sfcapp_type parse_apptype(const char *type);
@@ -16,6 +18,8 @@ int parse_uint64(const char* str, uint64_t *res, int radix);
 int parse_ether(const char *str, struct ether_addr *eth_addr);
 
 int parse_ipv4(const char *str, uint32_t *ipv4);
+
+int parse_ctrlr_addr(char *str, struct ctrlr_addr* caddr);
 
 void parse_config_file(char* cfg_filename);
 

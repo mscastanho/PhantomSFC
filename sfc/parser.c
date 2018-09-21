@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <rte_ether.h>
 #include <rte_ip.h>
@@ -128,6 +129,30 @@ int parse_ipv4(const char *str, uint32_t *ipv4){
         return -1;
         
     *ipv4 = IPv4(a,b,c,d);
+    return 0;
+}
+
+int parse_ctrlr_addr(char *str, struct ctrlr_addr *caddr){
+    char *val_str, *dup;
+    uint32_t ip;
+    uint16_t port;
+    int err;
+
+    dup = strdup(str);
+    val_str = strsep(&dup,":");
+    err = parse_ipv4(val_str,&ip);
+    if(err)
+        return err;
+
+    val_str = strsep(&dup,":");
+    err = parse_uint16(val_str,&port,10);
+    if(err)
+        return err;
+
+    caddr->ip = ip;
+    caddr->port = port;
+    free(dup);
+
     return 0;
 }
 
