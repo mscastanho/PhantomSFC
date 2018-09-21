@@ -29,12 +29,10 @@ struct rte_mempool *sfcapp_pktmbuf_pool;
 
 static const struct rte_eth_conf dev_cfg = {
     .rxmode = {
-        .header_split   = 0, /* Header Split disabled*/
+        .mq_mode = ETH_MQ_RX_NONE,
+        .max_rx_pkt_len = ETHER_MAX_LEN,
         .split_hdr_size = 0,
-        .hw_ip_checksum = 0, /* Disable IP Checksum */
-        .hw_vlan_filter = 0, /* Disable VLAN filtering */
-        .jumbo_frame    = 0, /* No jumbo frames */
-        .hw_strip_crc   = 1, /* Enable HW CRC strip*/
+        .offloads = 0,
     },
 
     .txmode = {
@@ -45,7 +43,7 @@ static const struct rte_eth_conf dev_cfg = {
 static void sfcapp_assoc_ports(int portmask){
     uint8_t i;
     int count = 0; /* We'll only setup 2 ports */
-    int nb_ports_avlb = rte_eth_dev_count();
+    int nb_ports_avlb = rte_eth_dev_count_avail();
 
     if(nb_ports_avlb < 2)
         rte_exit(EXIT_FAILURE,"Not enough ports! 2 needed.\n");
@@ -227,7 +225,7 @@ init_port(uint8_t port, struct rte_mempool *mbuf_pool){
     int ret;
     uint16_t q;
 
-    if(port >= rte_eth_dev_count())
+    if(port >= RTE_MAX_ETHPORTS)
         return -1;
     
     ret = rte_eth_dev_configure(port,NB_RX_QS,NB_TX_QS,&port_conf);
