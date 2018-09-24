@@ -40,6 +40,19 @@ static const struct rte_eth_conf dev_cfg = {
     },
 };
 
+const char *help_msg = "PhantomSFC options:\
+    -p, --pmask         the ports to be used formatted as\
+                        a portmask. Ex: 0x11 enable ports\
+                        0 and 1.\
+    -t, --type          specify SFC element type\
+    -c, --config        configuration file\
+    -h, --help          display this help message\
+    -e, --ebpf          enable eBPF classification. Only\
+                        works with \"classifier\"\
+    -a, --controller    controller address in <ip>:<port>\
+                        format";
+
+
 static void sfcapp_assoc_ports(int portmask){
     uint8_t i;
     int count = 0; /* We'll only setup 2 ports */
@@ -69,6 +82,10 @@ const struct option sfcapp_options[] = {
     {"controller", required_argument , 0 ,   'a' },
     {0           , 0                 , 0 ,    0  },
 };
+
+static void print_help(void){
+
+}
 
 static void 
 parse_args(int argc, char **argv){
@@ -102,6 +119,7 @@ parse_args(int argc, char **argv){
                 cfg_filename = optarg;
                 break;
             case 'h':
+                printf("%s",help_msg);
                 break;
             case 'e':
                 elf_filename = optarg;
