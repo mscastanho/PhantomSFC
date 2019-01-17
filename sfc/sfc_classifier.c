@@ -115,10 +115,12 @@ static int classifier_ebpf_handle_pkts(struct rte_mbuf **mbufs, uint16_t nb_pkts
 
     nb_tx = 0;
     lkp = 0;
+    path_info = 0;
 
     for(i = 0 ; i < nb_pkts ; i++){
     
-        path_info = cls_fn(rte_pktmbuf_mtod(mbufs[i], struct ether_hdr *),mbufs[i]->pkt_len);
+        if(cls_fn != NULL)
+            path_info = cls_fn(rte_pktmbuf_mtod(mbufs[i], struct ether_hdr *),mbufs[i]->pkt_len);
 
         /* If no chain configured, path_info should be 0 */
         if(path_info != 0)
